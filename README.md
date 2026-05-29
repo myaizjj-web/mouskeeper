@@ -1,62 +1,64 @@
-# 🖱️ Mouse Keeper
+# Mouse Keeper
 
-A lightweight Windows utility that prevents your screen from sleeping by simulating imperceptible mouse micro-movements.
+A lightweight Windows utility that keeps your screen awake by sending tiny, non-clicking mouse movements at a configurable interval.
+
+![Mouse Keeper screenshot](docs/screenshot.png)
 
 ![Python](https://img.shields.io/badge/Python-3.7%2B-blue?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/Platform-Windows-0078d4?logo=windows&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-## ✨ Features
+## Features
 
-- **Invisible mouse movements** — Moves the cursor 1px right then 1px left, completely imperceptible
-- **Windows API integration** — Uses `SetThreadExecutionState` for reliable sleep prevention
-- **Real-time idle monitoring** — Displays system idle time to confirm it's working
-- **Modern dark UI** — Clean tkinter interface with animated pulse ring and activity log
-- **Configurable interval** — Adjust simulation frequency from 5s to 120s via slider
-- **Zero clicks** — Only simulates movement, never triggers mouse clicks or interferes with your work
+- Prevents the display and system from sleeping with the Windows `SetThreadExecutionState` API.
+- Sends a 1-pixel right/left mouse micro-movement with `SendInput`; it never clicks.
+- Shows live idle time, countdown, simulation count, and current screen/lock timeout status.
+- Supports English and Chinese UI text with an in-app language toggle.
+- Lets you choose the simulation interval and an optional maximum run time.
+- Includes PowerShell helpers for creating a desktop launcher.
 
-## 🚀 Quick Start
+## Requirements
 
-### Requirements
+- Windows
+- Python 3.7 or newer
+- No third-party Python packages
 
-- Python 3.7+
-- Windows OS
-- No additional packages required (uses only the standard library)
+## Run
 
-### Run
-
-```bash
+```powershell
 python mouse_keeper.py
 ```
 
-### Create Desktop Shortcut
+## Create A Desktop Shortcut
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File create_shortcut.ps1
 ```
 
-## 📁 Project Structure
+The shortcut uses `launch_mouse_keeper.ps1`, which looks for a valid Python launcher and starts the app without leaving a terminal window open.
 
-```
+## How It Works
+
+Mouse Keeper combines two Windows mechanisms:
+
+1. `SetThreadExecutionState` asks Windows to keep the system and display awake while the app is running.
+2. `SendInput` sends tiny relative mouse movement events so Windows sees activity without triggering clicks or disrupting normal work.
+
+The idle timer shown in the app resets after each simulated movement, which makes it easy to confirm that the tool is active.
+
+## Project Structure
+
+```text
 mouseclick/
-├── mouse_keeper.py       # Main application (GUI + logic)
-├── create_shortcut.ps1   # PowerShell script to create a desktop shortcut
-├── .gitignore
-└── README.md
+|-- mouse_keeper.py          # Main tkinter application
+|-- create_shortcut.ps1      # Creates the desktop shortcut
+|-- launch_mouse_keeper.ps1  # Finds Python and launches the app
+|-- docs/
+|   `-- screenshot.png       # README screenshot
+|-- .gitignore
+`-- README.md
 ```
 
-## 🛠️ How It Works
+## License
 
-1. **`SendInput` API** — Generates tiny relative mouse movements (±1 pixel) that are invisible to the user
-2. **`SetThreadExecutionState`** — Tells Windows to keep the display and system awake
-3. **`GetLastInputInfo`** — Monitors system idle time in real-time; after each simulation the idle timer resets to ~0s, proving the prevention is active
-
-## ⚙️ Configuration
-
-| Setting  | Range    | Default | Description                        |
-|----------|----------|---------|------------------------------------|
-| Interval | 5 – 120s | 30s     | Time between mouse simulations     |
-
-## 📜 License
-
-MIT License — feel free to use and modify.
+MIT License. Use, modify, and share freely.

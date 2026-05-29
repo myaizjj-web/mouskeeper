@@ -93,10 +93,23 @@ def get_screen_timeout(lang="zh"):
                 if seconds == 0:
                     return "Never" if lang == "en" else "从不"
                 minutes = seconds // 60
-                return f"{minutes} min" if lang == "en" else f"{minutes} 分钟"
+                return f"{minutes}m" if lang == "en" else f"{minutes}分"
         return "Unknown" if lang == "en" else "未知"
     except Exception:
         return "Unknown" if lang == "en" else "未知"
+
+def get_lock_timeout(lang="zh"):
+    """Query the lock screen timeout from registry."""
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System") as key:
+            val, _ = winreg.QueryValueEx(key, "InactivityTimeoutSecs")
+            if val == 0:
+                return "Never" if lang == "en" else "从不"
+            return f"{val // 60}m" if lang == "en" else f"{val // 60}分"
+    except Exception:
+        pass
+    return "Unset" if lang == "en" else "未配置"
 
 # ─── Translations ────────────────────────────────────────────────────────────
 TRANSLATIONS = {
@@ -110,7 +123,7 @@ TRANSLATIONS = {
         "idle_title":       "⏱ 系统空闲时间",
         "idle_0":           "0 秒",
         "countdown_title":  "⏳ 下次模拟",
-        "timeout_title":    "🖥 屏幕超时",
+        "timeout_title":    "🖥 黑屏 / 锁屏",
         "idle_hint":        "💡 空闲时间在每次模拟后会重置为 0，证明防休眠有效",
         "stat_count":       "模拟次数",
         "stat_interval":    "间隔 (秒)",
@@ -118,14 +131,17 @@ TRANSLATIONS = {
         "status_standby":   "待机",
         "status_active":    "活跃",
         "slider_label":     "模拟间隔",
+        "duration_label":   "自动停止时长 (分钟) [0=不限]",
+        "duration_scale":   "0 ──────────────────────── 480",
         "btn_start":        "▶  开始",
         "btn_stop":         "⏹  停止",
         "log_title":        "📋 活动日志",
         "footer":           "鼠标微移动 · 不影响正常使用 · 零点击",
         "lang_btn":         "EN",
         "log_start":        "▶ 开始运行 (间隔: {interval}秒)",
-        "log_timeout":      "ℹ 屏幕超时设置: {timeout}",
+        "log_timeout":      "ℹ 黑屏/锁屏设置: {timeout}",
         "log_stop":         "⏹ 已停止 (共模拟 {count} 次)",
+        "log_auto_stop":    "⏹ 达到最大运行时间，自动停止",
         "log_sim":          "✦ 第 {count} 次模拟完成 (空闲已重置: {idle:.1f}秒)",
         "idle_lt1":         "< 1 秒",
         "idle_sec":         "{val:.0f} 秒",
@@ -141,7 +157,7 @@ TRANSLATIONS = {
         "idle_title":       "⏱ System Idle",
         "idle_0":           "0 sec",
         "countdown_title":  "⏳ Next Sim",
-        "timeout_title":    "🖥 Screen Off",
+        "timeout_title":    "🖥 Screen / Lock",
         "idle_hint":        "💡 Idle time resets to 0 after each simulation, confirming prevention is active",
         "stat_count":       "Sim Count",
         "stat_interval":    "Interval (s)",
@@ -149,14 +165,17 @@ TRANSLATIONS = {
         "status_standby":   "Standby",
         "status_active":    "Active",
         "slider_label":     "Simulation Interval",
+        "duration_label":   "Max Run Time (mins) [0=unlimited]",
+        "duration_scale":   "0 ──────────────────────── 480",
         "btn_start":        "▶  Start",
         "btn_stop":         "⏹  Stop",
         "log_title":        "📋 Activity Log",
         "footer":           "Micro-movements · Non-intrusive · Zero clicks",
         "lang_btn":         "中文",
         "log_start":        "▶ Started (interval: {interval}s)",
-        "log_timeout":      "ℹ Screen timeout: {timeout}",
+        "log_timeout":      "ℹ Screen/Lock settings: {timeout}",
         "log_stop":         "⏹ Stopped ({count} simulations total)",
+        "log_auto_stop":    "⏹ Auto-stopped: reached max duration",
         "log_sim":          "✦ Simulation #{count} done (idle reset: {idle:.1f}s)",
         "idle_lt1":         "< 1 sec",
         "idle_sec":         "{val:.0f} sec",
@@ -324,8 +343,10 @@ class MouseKeeperApp:
         self.elapsed_seconds = 0
         self.click_count = 0
         self.interval = 30  # seconds between simulations
+        self.max_duration_mins = 0 # 0 means unlimited
         self.countdown = 0  # countdown to next simulation
         self.screen_timeout_str = get_screen_timeout(self.lang)
+        self.lock_timeout_str = get_lock_timeout(self.lang)
 
         # Track labels that need language updates
         self._i18n_labels = {}
@@ -412,7 +433,7 @@ class MouseKeeperApp:
         self.timeout_title_label = tk.Label(to_card, text=self._tr("timeout_title"), font=("Segoe UI", 8),
                  fg=COLORS["text_dim"], bg=COLORS["bg_card"])
         self.timeout_title_label.pack()
-        self.timeout_value_label = tk.Label(to_card, text=self.screen_timeout_str, font=("Segoe UI", 13, "bold"),
+        self.timeout_value_label = tk.Label(to_card, text=f"{self.screen_timeout_str} / {self.lock_timeout_str}", font=("Segoe UI", 11, "bold"),
                  fg=COLORS["text"], bg=COLORS["bg_card"])
         self.timeout_value_label.pack()
 
@@ -465,6 +486,31 @@ class MouseKeeperApp:
             font=("Consolas", 8),
             fg=COLORS["text_muted"], bg=COLORS["bg_dark"]
         ).pack(fill="x")
+
+        # ── Duration Input ──
+        duration_frame = tk.Frame(self.root, bg=COLORS["bg_dark"])
+        duration_frame.pack(fill="x", padx=40, pady=(10, 4))
+
+        self.duration_label = tk.Label(
+            duration_frame, text=self._tr("duration_label"),
+            font=("Segoe UI", 9),
+            fg=COLORS["text_dim"], bg=COLORS["bg_dark"]
+        )
+        self.duration_label.pack(side="left")
+
+        vcmd = (self.root.register(self._validate_number), '%P')
+        self.duration_var = tk.StringVar(value=str(self.max_duration_mins))
+        self.duration_var.trace_add("write", self._on_duration_change)
+
+        self.duration_entry = tk.Entry(
+            duration_frame, textvariable=self.duration_var,
+            width=5, font=("Consolas", 11, "bold"), justify="center",
+            bg=COLORS["bg_card"], fg=COLORS["accent"], bd=0, 
+            highlightthickness=1, highlightbackground=COLORS["border"], 
+            highlightcolor=COLORS["accent_hover"],
+            validate="key", validatecommand=vcmd
+        )
+        self.duration_entry.pack(side="right")
 
         # ── Control Buttons ──
         btn_frame = tk.Frame(self.root, bg=COLORS["bg_dark"])
@@ -554,7 +600,8 @@ class MouseKeeperApp:
 
         # Update screen timeout value with new language
         self.screen_timeout_str = get_screen_timeout(self.lang)
-        self.timeout_value_label.config(text=self.screen_timeout_str)
+        self.lock_timeout_str = get_lock_timeout(self.lang)
+        self.timeout_value_label.config(text=f"{self.screen_timeout_str} / {self.lock_timeout_str}")
 
         # Info hint
         self.idle_info.config(text=t["idle_hint"])
@@ -572,6 +619,8 @@ class MouseKeeperApp:
 
         # Slider
         self.slider_label.config(text=t["slider_label"])
+        if hasattr(self, 'duration_label'):
+            self.duration_label.config(text=t["duration_label"])
 
         # Button
         if self.running:
@@ -612,9 +661,21 @@ class MouseKeeperApp:
         setattr(self, attr_name, lbl)
         return title_lbl  # Return title label for i18n updates
 
+    def _validate_number(self, P):
+        if P == "" or P.isdigit():
+            return True
+        return False
+
     def _on_interval_change(self, val):
         self.interval = int(val)
         self.interval_label.config(text=str(self.interval))
+
+    def _on_duration_change(self, *args):
+        val = self.duration_var.get()
+        if val == "":
+            self.max_duration_mins = 0
+        else:
+            self.max_duration_mins = int(val)
 
     def _toggle(self):
         if self.running:
@@ -638,13 +699,14 @@ class MouseKeeperApp:
         self.pulse_ring.set_active(True, self.lang)
         self.pulse_ring.animate()
         self.interval_slider.config(state="disabled")
+        self.duration_entry.config(state="disabled")
 
         # Enable keep-awake via Windows API
         set_keep_awake(True)
 
         # Log start event
         self._log(self._tr("log_start").format(interval=self.interval), "start")
-        self._log(self._tr("log_timeout").format(timeout=self.screen_timeout_str), "info")
+        self._log(self._tr("log_timeout").format(timeout=f"{self.screen_timeout_str} / {self.lock_timeout_str}"), "info")
 
         # Start worker thread
         self.worker_thread = threading.Thread(target=self._worker, daemon=True)
@@ -662,6 +724,7 @@ class MouseKeeperApp:
         self.status_label.config(text=self._tr("status_standby"), fg=COLORS["text"])
         self.pulse_ring.set_active(False, self.lang)
         self.interval_slider.config(state="normal")
+        self.duration_entry.config(state="normal")
         self.countdown_label.config(text="--")
 
         # Disable keep-awake
@@ -743,6 +806,12 @@ class MouseKeeperApp:
         if self.running:
             self.elapsed_seconds += 1
             self.pulse_ring.update_timer(self.elapsed_seconds)
+            
+            # Check for auto-stop based on max duration
+            if self.max_duration_mins > 0 and (self.elapsed_seconds / 60.0) >= self.max_duration_mins:
+                self._log(self._tr("log_auto_stop"), "stop")
+                self._stop()
+                
         self.root.after(1000, self._update_clock)
 
     def _on_close(self):

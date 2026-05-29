@@ -18,3 +18,6 @@ Desktop.ini
 # Virtual environment
 venv/
 .env/
+
+# Unrelated local project folder
+samartsaver/
